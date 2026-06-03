@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -9,29 +9,29 @@ clear
 
 echo ""
 echo "========================================"
-echo "      Let's Encrypt SSL 一键脚本"
+echo "     Let's Encrypt SSL Tool"
 echo "========================================"
 echo ""
 
-read -p "请输入域名: " DOMAIN
+read -p "Enter Domain: " DOMAIN
 
 if [ -z "$DOMAIN" ]; then
-    echo -e "${RED}域名不能为空${NC}"
+    echo -e "${RED}Domain cannot be empty${NC}"
     exit 1
 fi
 
 if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}请使用 root 运行${NC}"
+    echo -e "${RED}Please run as root${NC}"
     exit 1
 fi
 
 echo ""
-echo -e "${YELLOW}[1/8] 更新软件源...${NC}"
+echo -e "${YELLOW}[1/8] Updating packages...${NC}"
 
 apt update -y
 
 echo ""
-echo -e "${YELLOW}[2/8] 安装依赖...${NC}"
+echo -e "${YELLOW}[2/8] Installing dependencies...${NC}"
 
 apt install -y \
 curl \
@@ -42,43 +42,43 @@ cron \
 dnsutils
 
 echo ""
-echo -e "${YELLOW}[3/8] 获取服务器IP...${NC}"
+echo -e "${YELLOW}[3/8] Detecting server IP...${NC}"
 
-SERVER_IP=$(curl -4 -s ifconfig.me)
+SERVER_IP=$(curl -4 -s https://ifconfig.me)
 
 if [ -z "$SERVER_IP" ]; then
-    SERVER_IP=$(curl -4 -s ipv4.icanhazip.com)
+    SERVER_IP=$(curl -4 -s https://ipv4.icanhazip.com)
 fi
 
-DNS_IP=$(dig +short $DOMAIN | tail -n1)
+DNS_IP=$(dig +short "$DOMAIN" | tail -n1)
 
 echo ""
-echo "域名解析IP : $DNS_IP"
-echo "服务器公网IP : $SERVER_IP"
+echo "Domain IP : $DNS_IP"
+echo "Server IP : $SERVER_IP"
 echo ""
 
 if [ "$DNS_IP" != "$SERVER_IP" ]; then
-    echo -e "${RED}错误：域名未解析到当前服务器${NC}"
+    echo -e "${RED}ERROR: Domain does not point to this server${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}DNS检查通过${NC}"
+echo -e "${GREEN}DNS Check Passed${NC}"
 
 echo ""
-echo -e "${YELLOW}[4/8] 检查证书是否已存在...${NC}"
+echo -e "${YELLOW}[4/8] Checking existing certificate...${NC}"
 
 if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
-    echo -e "${GREEN}证书已存在${NC}"
+    echo -e "${GREEN}Certificate already exists${NC}"
 
     openssl x509 \
-    -in /etc/letsencrypt/live/$DOMAIN/fullchain.pem \
+    -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" \
     -noout -dates
 
     exit 0
 fi
 
 echo ""
-echo -e "${YELLOW}[5/8] 启动 Nginx...${NC}"
+echo -e "${YELLOW}[5/8] Starting nginx...${NC}"
 
 systemctl enable nginx >/dev/null 2>&1
 systemctl start nginx
@@ -86,73 +86,73 @@ systemctl start nginx
 sleep 2
 
 if ! ss -lntp | grep -q ":80 "; then
-    echo -e "${RED}80端口监听失败${NC}"
+    echo -e "${RED}Port 80 is not listening${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}80端口正常${NC}"
+echo -e "${GREEN}Port 80 OK${NC}"
 
 echo ""
-echo -e "${YELLOW}[6/8] 停止 Nginx 申请证书...${NC}"
+echo -e "${YELLOW}[6/8] Stopping nginx...${NC}"
 
 systemctl stop nginx
 
 echo ""
-echo -e "${YELLOW}[7/8] 申请SSL证书...${NC}"
+echo -e "${YELLOW}[7/8] Requesting SSL certificate...${NC}"
 
 certbot certonly \
 --standalone \
--d $DOMAIN \
+-d "$DOMAIN" \
 --agree-tos \
 --register-unsafely-without-email \
 --non-interactive
 
 if [ $? -ne 0 ]; then
-    echo -e "${RED}证书申请失败${NC}"
+    echo -e "${RED}Certificate request failed${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}证书申请成功${NC}"
+echo -e "${GREEN}Certificate issued successfully${NC}"
 
 echo ""
-echo -e "${YELLOW}[8/8] 配置自动续期...${NC}"
+echo -e "${YELLOW}[8/8] Configuring auto renewal...${NC}"
 
 cat >/etc/cron.d/certbot-renew <<EOF
 0 4 * * * root certbot renew --quiet
 EOF
 
-systemctl restart cron
+systemctl restart cron 2>/dev/null
 
-echo -e "${GREEN}自动续期配置完成${NC}"
+echo -e "${GREEN}Auto renewal configured${NC}"
 
 echo ""
-echo "测试续期功能..."
+echo "Testing renewal..."
 certbot renew --dry-run
 
 echo ""
 echo "========================================"
-echo "           SSL申请完成"
+echo "           COMPLETED"
 echo "========================================"
 echo ""
 
-echo "证书路径："
+echo "Certificate:"
 echo "/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
 
 echo ""
-echo "私钥路径："
+echo "Private Key:"
 echo "/etc/letsencrypt/live/$DOMAIN/privkey.pem"
 
 echo ""
-echo "查看证书有效期："
+echo "Check Expiry:"
 echo "openssl x509 -in /etc/letsencrypt/live/$DOMAIN/fullchain.pem -noout -dates"
 
 echo ""
-echo "手动续期："
+echo "Manual Renew:"
 echo "certbot renew"
 
 echo ""
-echo "测试续期："
+echo "Renew Test:"
 echo "certbot renew --dry-run"
 
 echo ""
-echo "完成。"
+echo "Done."
